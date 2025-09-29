@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>小學生網路聊天練習機器人</title>
+  <style>
+    :root{--blue:#4f46e5;--bg:#f7fafc;--card:#ffffff;--muted:#6b7280}
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,'Noto Sans','Helvetica Neue',Arial;background:var(--bg);margin:0;padding:24px}
+    .app{max-width:1000px;margin:0 auto;background:var(--card);border-radius:12px;box-shadow:0 6px 24px rgba(16,24,40,.08);display:grid;grid-template-columns:260px 1fr;overflow:hidden}
+    aside{padding:18px;border-right:1px solid #eef2ff;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%)}
+    main{padding:18px;display:flex;flex-direction:column;gap:12px}
+    h2{margin:0;font-size:18px}
+    .scenario-btn{display:block;width:100%;padding:8px 10px;margin-bottom:8px;border-radius:8px;border:1px solid #e6e9ff;background:#fff;text-align:left;cursor:pointer}
+    .scenario-btn.active{background:var(--blue);color:#fff;border-color:transparent}
+    .quick-replies{margin-top:12px}
+    .quick-replies button{display:block;width:100%;text-align:left;padding:8px;border-radius:8px;border:1px solid #eef2ff;background:#fff;margin-bottom:6px;cursor:pointer}
+    .chat-window{background:#f8fafc;padding:12px;border-radius:8px;height:420px;overflow:auto;border:1px solid #eef2ff}
+    .msg{max-width:78%;padding:10px;border-radius:12px;margin-bottom:10px;display:inline-block}
+    .fromA{background:#fff;border:1px solid #e6e9ff}
+    .fromB{background:rgba(79,70,229,0.08);margin-left:auto}
+    .controls{display:flex;gap:8px}
+    input[type="text"]{flex:1;padding:10px;border-radius:8px;border:1px solid #e6e9ff}
+    button.primary{background:var(--blue);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer}
+    button.ghost{background:#fff;border:1px solid #eef2ff;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .reveal{background:#fff;padding:12px;border-radius:8px;border:1px solid #eef2ff}
+    .stop-banner{background:#fff7f7;border:1px solid #ffd6d6;padding:10px;border-radius:8px;color:#b91c1c}
+    footer.note{font-size:13px;color:var(--muted)}
+    @media(max-width:900px){.app{grid-template-columns:1fr}.chat-window{height:360px}}
+  </style>
+</head>
+<body>
+  <div class="app" role="application">
+    <aside>
+      <h3>情境列表</h3>
+      <div id="scenarios"></div>
+
+      <div class="quick-replies">
+        <h4>快速回應（點擊加入聊天）</h4>
+        <div id="quickReplies"></div>
+      </div>
+
+      <div style="margin-top:12px;font-size:13px;color:var(--muted)">
+        提示：輸入或按「停止」即可立刻結束練習。
+        <div style="margin-top:8px;color:#333;font-weight:600">注意：請勿在練習中分享真實個資（姓名、地址、學校全名、電話、帳號密碼）。</div>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <h2 id="title">聊天練習</h2>
+        <div style="margin-top:6px;color:var(--muted)" id="subtitle">扮演 B（學生）並回應 A 的訊息。</div>
+      </header>
+
+      <section class="chat-window" id="chat"></section>
+
+      <div class="controls">
+        <input id="input" type="text" placeholder="以 B 的身分輸入回應，或使用左側快速回應...">
+        <button id="send" class="primary">送出</button>
+        <button id="stopBtn" class="ghost">停止</button>
+        <button id="revealBtn" class="ghost">揭曉答案</button>
+      </div>
+
+      <div id="revealArea" class="reveal" style="display:none"></div>
+
+      <div id="stopNotice" style="display:none" class="stop-banner">已停止：請立刻告訴可信任的大人（家長、老師或輔導員）。</div>
+
+      <footer class="note">完成回應後點「揭曉答案」查看危險點與安全回應範例。</footer>
+    </main>
+  </div>
+
+  <script>
+    const SCENARIOS = [
+      { id:1, title:'遊戲帳號', script:[{from:'A',text:'嗨～你平常玩什麼遊戲？'},{from:'A',text:'我也很愛玩《遊戲名》，你常用哪個帳號呢？可以給我嗎？',stop:true}], dangerExplain:'索取遊戲帳號或密碼可能導致帳號被盜用或遭人騷擾。', safeReplies:['我不方便把帳號給別人。','我只跟認識的朋友交換帳號。','我們可以只在遊戲裡隊伍合作，不交換帳號。'] },
+      { id:2, title:'個資試探', script:[{from:'A',text:'你住哪一區啊？我可能跟你很近耶～'},{from:'A',text:'你讀哪間學校？我們說不定有相同老師。',stop:true}], dangerExplain:'透露居住位置或學校等個資可能讓陌生人得知你真實身分或位置。', safeReplies:['我不方便透露住址或學校。','我們可以聊興趣，不聊住址。','我不分享個人資訊，抱歉。'] },
+      { id:3, title:'視訊 / 照片要求', script:[{from:'A',text:'我們玩遊戲時你能開鏡頭讓我看看嗎？我想知道你長怎樣～',stop:true}], dangerExplain:'要求視訊或照片可能導致影像被濫用或轉為騷擾材料。', safeReplies:['我不會跟網友開鏡頭。','我只跟認識的人視訊。','我們可以用語音或只打字玩遊戲。'] },
+      { id:4, title:'約見面', script:[{from:'A',text:'改天你願意出來玩嗎？我可以到你常去的那家店接你。',stop:true}], dangerExplain:'網友邀約見面並要求保密是高風險訊號，可能涉及危害人身安全。', safeReplies:['我不會跟網路認識的人見面，我要告訴家長/老師。','如果要出門都要跟家長說並帶家長一起。'] },
+      { id:5, title:'感情試探 -> 可能升級騷擾', script:[{from:'A',text:'你喜歡男生還是女生？有沒有暗戀的人？'},{from:'A',text:'如果有人說想親你你會怎麼辦？',stop:true}], dangerExplain:'感情或性話題的試探可能被用來操控或引導到不當要求與騷擾。', safeReplies:['這類問題我不想回答。','我們只是朋友，別聊這種私事。'] },
+      { id:6, title:'假連結 / 檔案', script:[{from:'A',text:'我有免費的遊戲皮膚，點這個連結就能拿 → [連結]',stop:true}], dangerExplain:'不明連結或檔案可能含有詐騙或惡意軟體，會危及帳號或裝置安全。', safeReplies:['我不會點來路不明的連結。','可以用別的方式取得，不要讓我下載東西。'] }
+    ];
+
+    const scenariosEl = document.getElementById('scenarios');
+    const chatEl = document.getElementById('chat');
+    const titleEl = document.getElementById('title');
+    const quickEl = document.getElementById('quickReplies');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const stopBtn = document.getElementById('stopBtn');
+    const revealBtn = document.getElementById('revealBtn');
+    const revealArea = document.getElementById('revealArea');
+    const stopNotice = document.getElementById('stopNotice');
+
+    let currentIndex = 0;
+    let messages = [];
+    let ended = false;
+
+    function init(){
+      SCENARIOS.forEach((s,idx)=>{
+        const btn = document.createElement('button');
+        btn.className = 'scenario-btn' + (idx===0? ' active':'');
+        btn.textContent = s.title;
+        btn.addEventListener('click', ()=>switchScenario(idx));
+        scenariosEl.appendChild(btn);
+      });
+      renderQuickReplies();
+      startScenario(0);
+
+      sendBtn.addEventListener('click', ()=>sendUser(inputEl.value));
+      inputEl.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ sendUser(inputEl.value); } });
+      stopBtn.addEventListener('click', ()=>doStop());
+      revealBtn.addEventListener('click', ()=>doReveal());
+    }
+
+    function switchScenario(idx){
+      currentIndex = idx; ended=false; messages=[]; stopNotice.style.display='none'; revealArea.style.display='none';
+      Array.from(scenariosEl.children).forEach((c,i)=> c.classList.toggle('active', i===idx));
+      renderQuickReplies(); startScenario(idx);
+    }
+
+    function startScenario(idx){
+      const s = SCENARIOS[idx]; titleEl.textContent = '聊天練習：' + s.title;
+      messages = []; for(let i=0;i<s.script.length;i++){ messages.push(s.script[i]); if(s.script[i].stop) break; }
+      renderChat();
+    }
+
+    function renderQuickReplies(){
+      quickEl.innerHTML=''; const replies = SCENARIOS[currentIndex].safeReplies || [];
+      replies.forEach(r=>{ const b = document.createElement('button'); b.textContent=r; b.addEventListener('click', ()=>addUserMessage(r)); quickEl.appendChild(b); });
+    }
+
+    function renderChat(){
+      chatEl.innerHTML=''; messages.forEach((m,idx)=>{ const d = document.createElement('div'); d.className='msg '+(m.from==='A'?'fromA':'fromB'); d.innerHTML='<div style="font-size:12px;color:'+(m.from==='A'?'#374151':'#1f2937')+';font-weight:600">'+m.from+'</div><div style="margin-top:6px">'+escapeHtml(m.text)+'</div>'; chatEl.appendChild(d); });
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function escapeHtml(str){ return (''+str).replace(/[&<>\"']/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[m];}); }
+
+    function addUserMessage(text){ if(ended) return; inputEl.value=''; messages.push({from:'B',text}); renderChat(); }
+
+    function sendUser(text){ if(ended) return; const t=(text||'').trim(); if(!t) return; inputEl.value=''; if(t==='停止'){ doStop(); messages.push({
